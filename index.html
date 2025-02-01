@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>🔄🐍🎮</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #333;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    h1 {
+      margin: 10px 0;
+      font-size: 3em;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      border: 2px solid #000;
+    }
+    #stats {
+      margin-top: 5px;
+      font-size: 1.2em;
+    }
+    /* Overlay for start/game over screen */
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      flex-direction: column;
+    }
+    .overlay-content {
+      text-align: center;
+    }
+    .mode-button {
+      font-size: 3em;
+      margin: 10px;
+      padding: 10px 20px;
+      cursor: pointer;
+      background: #222;
+      border: 2px solid #555;
+      color: #fff;
+    }
+    .mode-button:hover {
+      background: #444;
+    }
+    .overlay-message {
+      font-size: 1.5em;
+      margin-bottom: 20px;
+    }
+    /* Game over animations */
+    @keyframes chessFinish {
+      0% { transform: scale(0.5); opacity: 0; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .chessFinishAnimation {
+      animation: chessFinish 1s ease-out;
+    }
+    @keyframes trainFinish {
+      0% { transform: translateY(20px) rotate(10deg); opacity: 0; }
+      50% { transform: translateY(-10px) rotate(-5deg); opacity: 1; }
+      100% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    }
+    .trainFinishAnimation {
+      animation: trainFinish 1s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔄🐍🎮</h1>
+  <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <div id="stats"></div>
+  
+  <!-- Overlay for start/game over screen -->
+  <div id="overlay">
+    <div class="overlay-content">
+      <div id="overlayMessage" class="overlay-message"></div>
+      <div id="modeButtons">
+        <button id="chessButton" class="mode-button">♟️</button>
+        <button id="trainButton" class="mode-button">🚃</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // ------------------------------
+    // Global Variables and Constants
+    // ------------------------------
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const gridSize = 20; // 20x20 cells
+    const cellSize = canvas.width / gridSize;
+    const fixedTick = 200; // ms for chess mode
+
+    let snake = [];          // Each segment: {x, y} and (in train mode) optionally a color.
+    let treat = null;        // {x, y} for the treat (♟️ in chess mode, 🍎 in train mode)
+    let startTime = null;
+    let tickCount = 0;
+    let gameOver = false;
+    let mode = null;         // "chess" or "train"
+    let trainBoardColors = []; // 2D array for train mode board
+    let trainBoardBase = null; // Base parameters for train mode board
+
+    // For dynamic tick scheduling in train mode:
+    let currentTickInterval = fixedTick;
+    let tickTimeout = null;
+
+    // ------------------------------
+    // Sonification Setup
+    // ------------------------------
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContextClass();
+    if (audioCtx.state === 'suspended') {
+      document.addEventListener('click', () => {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      });
+    }
+
+    // ------------------------------
+    // Pitch Mapping Function
+    // ------------------------------
+    function getSquareFrequency(x, y) {
+      let index = y * gridSize + x;
+      const period = 111;
+      let modIndex = index % period;
+      let noteNumber;
+      if (modIndex < 56) {
+        noteNumber = modIndex;
+      } else {
+        let descendingIndex = modIndex - 56;
+        noteNumber = 54 - descendingIndex;
+      }
+      const scale = [0, 2, 4, 6, 7, 9, 11];
+      let degree = noteNumber % 7;
+      let octave = 2 + Math.floor(noteNumber / 7);
+      let semitoneOffset = scale[degree] + 12 * (octave - 2);
+      let baseFreq = 65.41; // C2
+      return baseFreq * Math.pow(2, semitoneOffset / 12);
+    }
+
+    // ------------------------------
+    // Scheduling Functions for Sonification
+    // ------------------------------
+    function scheduleSynthPluck(freq, duration, startTimeScheduled) {
+      let osc = audioCtx.createOscillator();
+      let gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0, startTimeScheduled);
+      gain.gain.linearRampToValueAtTime(0.7, startTimeScheduled + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTimeScheduled + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(startTimeScheduled);
+      osc.stop(startTimeScheduled + duration);
+    }
+
+    function scheduleHiHatPluck(duration, startTimeScheduled) {
+      let bufferSize = audioCtx.sampleRate * duration;
+      let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      let data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      let noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      let filter = audioCtx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.value = 7000;
+      let gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.5, startTimeScheduled);
+      gain.gain.exponentialRampToValueAtTime(0.01, startTimeScheduled + duration);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      noise.start(startTimeScheduled);
+      noise.stop(startTimeScheduled + duration);
+    }
+
+    // ------------------------------
+    // Kick Drum Sound (for treat eaten)
+    // ------------------------------
+    function playKickDrum() {
+      let osc = audioCtx.createOscillator();
+      let gain = audioCtx.createGain();
+      osc.type = 'sine';
+      // Start with a high frequency and quickly drop it to simulate a kick drum.
+      osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.2);
+      gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime);
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+
+    // ------------------------------
+    // Sonification: Head Sound & Burst Sequence
+    // ------------------------------
+    function playHeadSound(x, y) {
+      const headSoundDuration = 0.1;
+      let freq = getSquareFrequency(x, y);
+      scheduleSynthPluck(freq, headSoundDuration, audioCtx.currentTime);
+      scheduleHiHatPluck(headSoundDuration, audioCtx.currentTime);
+    }
+
+    function playSnakeBurst() {
+      const numSegments = snake.length;
+      const totalBurstTime = fixedTick / 1000;
+      const segmentDuration = totalBurstTime / numSegments;
+      let now = audioCtx.currentTime;
+      for (let i = 0; i < numSegments; i++) {
+        let seg = snake[i];
+        let freq = getSquareFrequency(seg.x, seg.y);
+        scheduleSynthPluck(freq, segmentDuration, now + i * segmentDuration);
+        scheduleHiHatPluck(segmentDuration, now + i * segmentDuration);
+      }
+    }
+
+    // ------------------------------
+    // Color Helper Functions
+    // ------------------------------
+    function chooseTrainBoardBase() {
+      const bases = [
+        { name: "pink", h: 340, s: 70, l: 85 },
+        { name: "blue", h: 210, s: 50, l: 40 },
+        { name: "grey", h: 0, s: 0, l: 50 }
+      ];
+      return bases[Math.floor(Math.random() * bases.length)];
+    }
+    function randomVariation(val, range) {
+      return val + (Math.random() * 2 - 1) * range;
+    }
+    function getTrainBoardColor(row, col) {
+      let h = randomVariation(trainBoardBase.h, 5);
+      let s = randomVariation(trainBoardBase.s, 5);
+      let l = randomVariation(trainBoardBase.l, 5);
+      return `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
+    }
+    function getRandomGreen() {
+      let s = 50 + Math.random() * 50;
+      let l = 30 + Math.random() * 40;
+      return `hsl(120, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
+    }
+
+    // ------------------------------
+    // Board & Drawing Functions
+    // ------------------------------
+    function drawBoard() {
+      for (let row = 0; row < gridSize; row++) {
+        for (let col = 0; col < gridSize; col++) {
+          let x = col * cellSize;
+          let y = row * cellSize;
+          if (mode === "chess") {
+            let color1 = "#F0D9B5";
+            let color2 = "#F0CEA0";
+            ctx.fillStyle = ((row + col) % 2 === 0) ? color1 : color2;
+          } else if (mode === "train") {
+            ctx.fillStyle = trainBoardColors[row][col];
+          }
+          ctx.fillRect(x, y, cellSize, cellSize);
+        }
+      }
+    }
+
+    function drawSnake() {
+      if (mode === "chess") {
+        for (let i = 0; i < snake.length; i++) {
+          let seg = snake[i];
+          if (i === 0) {
+            // For the head, draw a green rectangle background then the 🐲 emoji.
+            let headBg = "hsl(120, 100%, 30%)";
+            ctx.fillStyle = headBg;
+            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
+            ctx.font = (cellSize * 0.8) + "px serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐲", seg.x * cellSize + cellSize / 2, seg.y * cellSize + cellSize / 2);
+          } else {
+            let lightness = (snake.length === 1) ? 30 : 30 + (40 * i) / (snake.length - 1);
+            ctx.fillStyle = `hsl(120, 100%, ${lightness}%)`;
+            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
+          }
+        }
+      } else if (mode === "train") {
+        for (let i = 0; i < snake.length; i++) {
+          let seg = snake[i];
+          if (i === 0) {
+            // For the head in train mode, fill with its random green background then overlay 🐸.
+            let headColor = seg.color || getRandomGreen();
+            ctx.fillStyle = headColor;
+            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
+            ctx.font = (cellSize * 0.8) + "px serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐸", seg.x * cellSize + cellSize / 2, seg.y * cellSize + cellSize / 2);
+          } else {
+            if (!seg.color) seg.color = getRandomGreen();
+            ctx.fillStyle = seg.color;
+            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
+          }
+        }
+      }
+    }
+
+    function drawTreat() {
+      if (treat) {
+        ctx.font = (cellSize * 0.8) + "px serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        if (mode === "chess") {
+          ctx.fillText("♟️", treat.x * cellSize + cellSize / 2, treat.y * cellSize + cellSize / 2);
+        } else {
+          ctx.fillText("🍎", treat.x * cellSize + cellSize / 2, treat.y * cellSize + cellSize / 2);
+        }
+      }
+    }
+
+    function draw() {
+      drawBoard();
+      drawSnake();
+      drawTreat();
+    }
+
+    // ------------------------------
+    // Stats Display
+    // ------------------------------
+    function updateStats() {
+      if (!startTime) return;
+      let elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      document.getElementById("stats").innerText = `⏱️ ${elapsed} s | 🦶🏼 ${tickCount}`;
+    }
+
+    // ------------------------------
+    // Score Emoji Mappings
+    // ------------------------------
+    function getChessModeEmoji(score) {
+      const mapping = [
+        { threshold: 2, emoji: "🥇" },
+        { threshold: 3, emoji: "🏆" },
+        { threshold: 4, emoji: "🎖️" },
+        { threshold: 5, emoji: "🥈" },
+        { threshold: 6, emoji: "🥉" },
+        { threshold: 7, emoji: "🎗️" },
+        { threshold: 8, emoji: "💎" },
+        { threshold: 9, emoji: "🔱" },
+        { threshold: 10, emoji: "😞" },
+        { threshold: 11, emoji: "😟" },
+        { threshold: 12, emoji: "😢" },
+        { threshold: 13, emoji: "😩" },
+        { threshold: 14, emoji: "😖" },
+        { threshold: 15, emoji: "😫" },
+        { threshold: 16, emoji: "🥀" },
+        { threshold: 17, emoji: "💔" },
+        { threshold: 18, emoji: "☹️" },
+        { threshold: 19, emoji: "🙁" },
+        { threshold: 20, emoji: "😵" },
+        { threshold: 21, emoji: "👎" },
+        { threshold: 22, emoji: "🤦" },
+        { threshold: 23, emoji: "💀" },
+        { threshold: 24, emoji: "☠️" },
+        { threshold: 25, emoji: "🤢" },
+        { threshold: 26, emoji: "🤮" },
+        { threshold: 27, emoji: "😤" },
+        { threshold: 28, emoji: "😡" },
+        { threshold: 29, emoji: "🤬" },
+        { threshold: 30, emoji: "🤯" }
+      ];
+      for (let i = 0; i < mapping.length; i++) {
+        if (score <= mapping[i].threshold) {
+          return "♟️🏅 " + mapping[i].emoji;
+        }
+      }
+      return "♟️🏅 🤯";
+    }
+
+    function getTrainModeEmoji(score) {
+      const mapping = [
+        { threshold: 50, emoji: "🥇" },
+        { threshold: 100, emoji: "🏆" },
+        { threshold: 150, emoji: "🎖️" },
+        { threshold: 200, emoji: "🥈" },
+        { threshold: 250, emoji: "🥉" },
+        { threshold: 300, emoji: "🎗️" },
+        { threshold: 350, emoji: "💎" },
+        { threshold: 400, emoji: "🔱" },
+        { threshold: 410, emoji: "😞" },
+        { threshold: 420, emoji: "😟" },
+        { threshold: 430, emoji: "😢" },
+        { threshold: 440, emoji: "😩" },
+        { threshold: 450, emoji: "😖" },
+        { threshold: 460, emoji: "😫" },
+        { threshold: 470, emoji: "🥀" },
+        { threshold: 480, emoji: "💔" },
+        { threshold: 490, emoji: "☹️" },
+        { threshold: 500, emoji: "🙁" },
+        { threshold: 510, emoji: "😵" },
+        { threshold: 520, emoji: "👎" },
+        { threshold: 530, emoji: "🤦" },
+        { threshold: 540, emoji: "💀" },
+        { threshold: 550, emoji: "☠️" },
+        { threshold: 560, emoji: "🤢" },
+        { threshold: 570, emoji: "🤮" },
+        { threshold: 580, emoji: "😤" },
+        { threshold: 590, emoji: "😡" },
+        { threshold: 600, emoji: "🤬" },
+        { threshold: 610, emoji: "🤯" }
+      ];
+      for (let i = 0; i < mapping.length; i++) {
+        if (score <= mapping[i].threshold) {
+          return "🚂🏅 " + mapping[i].emoji;
+        }
+      }
+      return "🚂🏅 🤯";
+    }
+
+    // ------------------------------
+    // Game Logic and Tick Function
+    // ------------------------------
+    // In chess mode the snake only moves (and tickCount advances) when a treat is present.
+    // In train mode the snake moves continuously.
+    function gameTick() {
+      if (gameOver) return;
+      if (mode === "train") {
+        tickCount++;
+      } else if (mode === "chess") {
+        if (treat === null) {
+          updateStats();
+          draw();
+          return;
+        }
+        tickCount++;
+      }
+      updateStats();
+
+      let nextStep = null;
+      if (treat !== null) {
+        let path = findPath(snake[0], treat, snake);
+        if (path && path.length > 1) {
+          nextStep = path[1];
+        } else {
+          nextStep = chooseFallback(snake[0], snake);
+          if (nextStep === null) { endGame(); return; }
+        }
+      } else if (mode === "train") {
+        nextStep = chooseFallback(snake[0], snake);
+        if (nextStep === null) { endGame(); return; }
+      } else {
+        draw();
+        return;
+      }
+
+      let willGrow = (treat && nextStep.x === treat.x && nextStep.y === treat.y);
+      let bodyToCheck = willGrow ? snake : snake.slice(0, snake.length - 1);
+      if (isCellInList(nextStep, bodyToCheck)) {
+        snake.unshift(nextStep);
+        draw();
+        endGame();
+        return;
+      }
+
+      if (mode === "train") {
+        snake.unshift({ x: nextStep.x, y: nextStep.y, color: getRandomGreen() });
+      } else {
+        snake.unshift({ x: nextStep.x, y: nextStep.y });
+      }
+
+      // Play head sound and burst.
+      playHeadSound(nextStep.x, nextStep.y);
+      playSnakeBurst();
+
+      if (!willGrow) {
+        snake.pop();
+      } else {
+        // When a treat is eaten, clear it, play a kick drum, and (in train mode) speed up.
+        treat = null;
+        playKickDrum();
+        if (mode === "train") {
+          currentTickInterval *= 0.98;
+        }
+      }
+      draw();
+    }
+
+    // Recursive tick function.
+    function tick() {
+      if (gameOver) return;
+      gameTick();
+      if (mode === "train") {
+        tickTimeout = setTimeout(tick, currentTickInterval);
+      } else {
+        tickTimeout = setTimeout(tick, fixedTick);
+      }
+    }
+
+    // ------------------------------
+    // Collision Helper and Pathfinding (A*)
+    // ------------------------------
+    function isCellInList(cell, list) {
+      return list.some(item => item.x === cell.x && item.y === cell.y);
+    }
+
+    function findPath(start, goal, snakeList) {
+      let obstacles = snakeList.slice(0, snakeList.length - 1)
+        .filter(cell => !(cell.x === goal.x && cell.y === goal.y));
+      let openSet = [];
+      let closedSet = [];
+      let startNode = { x: start.x, y: start.y, g: 0, h: heuristic(start, goal), f: heuristic(start, goal), parent: null };
+      openSet.push(startNode);
+      while (openSet.length > 0) {
+        let currentIndex = 0;
+        for (let i = 1; i < openSet.length; i++) {
+          if (openSet[i].f < openSet[currentIndex].f) {
+            currentIndex = i;
+          }
+        }
+        let current = openSet.splice(currentIndex, 1)[0];
+        closedSet.push(current);
+        if (current.x === goal.x && current.y === goal.y) {
+          let path = [];
+          let temp = current;
+          while (temp) {
+            path.push({ x: temp.x, y: temp.y });
+            temp = temp.parent;
+          }
+          path.reverse();
+          return path;
+        }
+        let neighbors = [
+          { x: current.x, y: current.y - 1 },
+          { x: current.x, y: current.y + 1 },
+          { x: current.x - 1, y: current.y },
+          { x: current.x + 1, y: current.y }
+        ];
+        for (let neighbor of neighbors) {
+          if (neighbor.x < 0 || neighbor.x >= gridSize || neighbor.y < 0 || neighbor.y >= gridSize) continue;
+          if (isCellInList(neighbor, obstacles)) continue;
+          if (closedSet.find(n => n.x === neighbor.x && n.y === neighbor.y)) continue;
+          let tentativeG = current.g + 1;
+          let openNode = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
+          if (!openNode) {
+            openSet.push({ x: neighbor.x, y: neighbor.y, g: tentativeG, h: heuristic(neighbor, goal), f: tentativeG + heuristic(neighbor, goal), parent: current });
+          } else if (tentativeG < openNode.g) {
+            openNode.g = tentativeG;
+            openNode.f = tentativeG + openNode.h;
+            openNode.parent = current;
+          }
+        }
+      }
+      return null;
+    }
+
+    function heuristic(a, b) {
+      return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    }
+
+    function chooseFallback(current, snakeList) {
+      const directions = [
+        { x: 0, y: -1 },
+        { x: 1, y: 0 },
+        { x: 0, y: 1 },
+        { x: -1, y: 0 }
+      ];
+      let obstacles = snakeList.slice(0, snakeList.length - 1);
+      if (mode === "train") directions.sort(() => Math.random() - 0.5);
+      for (let dir of directions) {
+        let next = { x: current.x + dir.x, y: current.y + dir.y };
+        if (next.x < 0 || next.x >= gridSize || next.y < 0 || next.y >= gridSize) continue;
+        if (!isCellInList(next, obstacles)) return next;
+      }
+      return null;
+    }
+
+    // ------------------------------
+    // Game End and Overlay (Score Display with Animation)
+    // ------------------------------
+    function endGame() {
+      gameOver = true;
+      if (tickTimeout) clearTimeout(tickTimeout);
+      let elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      let emoji;
+      if (mode === "chess") {
+        emoji = getChessModeEmoji(tickCount);
+      } else {
+        emoji = getTrainModeEmoji(tickCount);
+      }
+      let overlayMsg = document.getElementById("overlayMessage");
+      overlayMsg.innerText = `${emoji} ⏱️ ${elapsed} s | 🦶🏼 ${tickCount}`;
+      // Apply different animation classes based on mode.
+      if (mode === "chess") {
+        overlayMsg.classList.add("chessFinishAnimation");
+      } else {
+        overlayMsg.classList.add("trainFinishAnimation");
+      }
+      document.getElementById("modeButtons").style.display = "block";
+      document.getElementById("overlay").style.display = "flex";
+    }
+
+    // ------------------------------
+    // Initialization & Mode Setup
+    // ------------------------------
+    function initTrainBoardColors() {
+      trainBoardColors = [];
+      for (let row = 0; row < gridSize; row++) {
+        trainBoardColors[row] = [];
+        for (let col = 0; col < gridSize; col++) {
+          trainBoardColors[row][col] = getTrainBoardColor(row, col);
+        }
+      }
+    }
+
+    function initGame() {
+      snake = [];
+      treat = null;
+      tickCount = 0;
+      gameOver = false;
+      startTime = Date.now();
+      currentTickInterval = fixedTick;
+      if (mode === "train") {
+        snake.push({ x: 10, y: 10, color: getRandomGreen() });
+        snake.push({ x: 9, y: 10, color: getRandomGreen() });
+        snake.push({ x: 8, y: 10, color: getRandomGreen() });
+        trainBoardBase = chooseTrainBoardBase();
+        initTrainBoardColors();
+      } else {
+        snake.push({ x: 10, y: 10 });
+        snake.push({ x: 9, y: 10 });
+        snake.push({ x: 8, y: 10 });
+      }
+      document.getElementById("stats").innerText = "";
+      // Hide any overlay and clear animation classes.
+      let overlayMsg = document.getElementById("overlayMessage");
+      overlayMsg.classList.remove("chessFinishAnimation", "trainFinishAnimation");
+      document.getElementById("overlay").style.display = "none";
+      tick();
+      draw();
+    }
+
+    // ------------------------------
+    // Canvas Click for Treat Placement
+    // ------------------------------
+    canvas.addEventListener("click", function(event) {
+      if (gameOver) return;
+      // Only allow placing a treat if none exists.
+      if (treat !== null) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((event.clientX - rect.left) / cellSize);
+      const y = Math.floor((event.clientY - rect.top) / cellSize);
+      // Only place a treat on a free tile.
+      if (isCellInList({ x: x, y: y }, snake)) return;
+      treat = { x, y };
+      if (!startTime) startTime = Date.now();
+    });
+
+    // ------------------------------
+    // Overlay Mode Selection Buttons
+    // ------------------------------
+    document.getElementById("chessButton").addEventListener("click", function() {
+      mode = "chess";
+      initGame();
+    });
+    document.getElementById("trainButton").addEventListener("click", function() {
+      mode = "train";
+      initGame();
+    });
+
+    // ------------------------------
+    // Start: Show overlay for mode selection
+    // ------------------------------
+    document.getElementById("overlayMessage").innerText = "";
+    document.getElementById("modeButtons").style.display = "block";
+    document.getElementById("overlay").style.display = "flex";
+  </script>
+</body>
+</html>
