@@ -1,63 +1,118 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>🔄🐍🎮</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141b16">
+  <title>Ekans 🐍</title>
   <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      color: #f2f4ec;
+      background: #141b16;
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 0;
-      background: #333;
-      color: #fff;
-      font-family: sans-serif;
-      text-align: center;
     }
-    h1 {
-      margin: 10px 0;
-      font-size: 3em;
+    #game {
+      height: 100vh;
+      height: 100dvh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+        max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    }
+    .game-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 30px;
+    }
+    .game-bar h1 {
+      margin: 0;
+      font-size: clamp(1rem, 3.5vw, 1.3rem);
+    }
+    #boardArea {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 0;
     }
     canvas {
       display: block;
-      margin: 0 auto;
-      border: 2px solid #000;
+      box-shadow: 0 0 0 1px #64705f;
+      cursor: crosshair;
+      touch-action: manipulation;
+      user-select: none;
     }
     #stats {
-      margin-top: 5px;
-      font-size: 1.2em;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(0.8rem, 2.9vw, 1rem);
+      white-space: nowrap;
     }
-    /* Overlay for start/game over screen */
-    #overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.85);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
-      flex-direction: column;
-    }
-    .overlay-content {
+    #hint {
+      margin: 0;
+      color: #c4d2be;
+      font-size: 0.84rem;
+      line-height: 1.3;
       text-align: center;
     }
-    .mode-button {
-      font-size: 3em;
-      margin: 10px;
-      padding: 10px 20px;
-      cursor: pointer;
-      background: #222;
-      border: 2px solid #555;
-      color: #fff;
+    #overlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+        max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      overflow: auto;
+      background: #0d1511cb;
     }
-    .mode-button:hover {
-      background: #444;
+    #overlay[hidden] { display: none; }
+    .overlay-content {
+      width: min(100%, 430px);
+      padding: clamp(16px, 4vw, 28px);
+      border: 1px solid #50684e;
+      border-radius: 18px;
+      background: #1b291f;
+      text-align: center;
+      box-shadow: 0 12px 32px #0005;
+    }
+    .overlay-title {
+      margin: 0;
+      font-size: clamp(1.65rem, 5vw, 2.3rem);
     }
     .overlay-message {
-      font-size: 1.5em;
-      margin-bottom: 20px;
+      margin: 8px 0 18px;
+      color: #c4d2be;
+      line-height: 1.4;
     }
+    #modeButtons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .mode-button {
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      min-height: 72px;
+      padding: 8px;
+      cursor: pointer;
+      touch-action: manipulation;
+      background: #2b4130;
+      border: 1px solid #62805e;
+      border-radius: 12px;
+      color: inherit;
+      font: inherit;
+    }
+    .mode-button:hover, .mode-button:active { background: #3c5941; }
+    .mode-button:focus-visible { outline: 2px solid #c3e79a; outline-offset: 2px; }
+    .mode-icon { font-size: 1.65rem; line-height: 1.1; }
+    .mode-note { color: #d3e0cd; font-size: 0.76rem; }
     /* Game-over animations */
     @keyframes chessFinish {
       0% { transform: scale(0.5); opacity: 0; }
@@ -75,20 +130,38 @@
     .trainFinishAnimation {
       animation: trainFinish 1s ease-out;
     }
+    @media (prefers-reduced-motion: reduce) {
+      .chessFinishAnimation, .trainFinishAnimation { animation: none; }
+    }
   </style>
 </head>
 <body>
-  <h1>🔄🐍🎮</h1>
-  <canvas id="gameCanvas" width="400" height="400"></canvas>
-  <div id="stats"></div>
-  
-  <!-- Overlay for start/game over screen -->
-  <div id="overlay">
+  <main id="game">
+    <header class="game-bar">
+      <h1>Ekans <span aria-hidden="true">🐍</span></h1>
+      <div id="stats" title="Time, steps and food eaten"></div>
+    </header>
+    <div id="boardArea">
+      <canvas id="gameCanvas" aria-label="Snake game board"></canvas>
+    </div>
+    <p id="hint" aria-live="polite">Tap or click an empty tile to place or move food.</p>
+  </main>
+
+  <div id="overlay" role="dialog" aria-modal="true" aria-labelledby="overlayTitle">
     <div class="overlay-content">
-      <div id="overlayMessage" class="overlay-message"></div>
+      <h2 id="overlayTitle" class="overlay-title">🔄🐍🎮 Ekans</h2>
+      <p id="overlayMessage" class="overlay-message">Place food on an empty tile. The snake will find its way to it.</p>
       <div id="modeButtons">
-        <button id="chessButton" class="mode-button">♟️</button>
-        <button id="trainButton" class="mode-button">🚃</button>
+        <button id="chessButton" class="mode-button" type="button">
+          <span class="mode-icon" aria-hidden="true">♟️</span>
+          <strong>Chess</strong>
+          <span class="mode-note">Moves when fed</span>
+        </button>
+        <button id="trainButton" class="mode-button" type="button">
+          <span class="mode-icon" aria-hidden="true">🚃</span>
+          <strong>Train</strong>
+          <span class="mode-note">Keeps moving</span>
+        </button>
       </div>
     </div>
   </div>
@@ -99,44 +172,59 @@
     // ------------------------------
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
-    const gridSize = 20; // 20x20 cells
+    const boardArea = document.getElementById("boardArea");
+    const stats = document.getElementById("stats");
+    const hint = document.getElementById("hint");
+    const defaultHint = hint.textContent;
+    const overlay = document.getElementById("overlay");
+    const overlayTitle = document.getElementById("overlayTitle");
+    const overlayMessage = document.getElementById("overlayMessage");
     const fixedTick = 200; // initial tick time in ms
+    const minimumTick = 90;
 
-    let cellSize = canvas.width / gridSize;
-    let snake = [];          // Each segment: {x, y} and, for train mode, possibly a color.
-    let treat = null;        // {x, y} for the treat (♟️ in chess mode, 🍎 in train mode)
-    let startTime = null;
+    let columns, rows, cellSize;
+    let rotated = false;
+    let snake = [];
+    let treat = null;
+    let lastVisit;
+    let detourSteps = 0;
+    let startTime;
     let tickCount = 0;
-    let treatsEaten = 0;     // New metric: number of treats eaten
-    let gameOver = false;
-    let mode = null;         // "chess" or "train"
-    let trainBoardColors = []; // 2D array for train mode board colors
-    let trainBoardBase = null; // Base color parameters for train mode board
-
-    // For dynamic tick scheduling and tempo increases:
+    let treatsEaten = 0;
+    let gameOver = true;
+    let mode = null;
+    let trainBoardColors = [];
     let currentTickInterval = fixedTick;
     let tickTimeout = null;
-    let lastMilestone = 0; // for every 10 steps rule
-
-    // For debouncing treat clicks:
-    let lastTreatClickTime = 0;
 
     // ------------------------------
     // Sonification Setup
     // ------------------------------
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    const audioCtx = new AudioContextClass();
-    if (audioCtx.state === 'suspended') {
-      document.addEventListener('click', () => {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-      });
+    let audioCtx;
+    let noiseBuffer;
+
+    function enableAudio() {
+      if (!AudioContextClass) return;
+      try {
+        if (!audioCtx) {
+          const context = new AudioContextClass();
+          noiseBuffer = context.createBuffer(1, context.sampleRate, context.sampleRate);
+          const data = noiseBuffer.getChannelData(0);
+          for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+          audioCtx = context;
+        }
+        if (audioCtx.state !== "running") audioCtx.resume().catch(() => {});
+      } catch {
+        // Audio is optional when the browser cannot initialize it.
+      }
     }
 
     // ------------------------------
     // Pitch Mapping Function
     // ------------------------------
     function getSquareFrequency(x, y) {
-      let index = y * gridSize + x;
+      let index = y * columns + x;
       const period = 111;
       let modIndex = index % period;
       let noteNumber;
@@ -163,7 +251,7 @@
       osc.type = 'sine';
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(0.0, startTimeScheduled);
-      gain.gain.linearRampToValueAtTime(0.7, startTimeScheduled + 0.01);
+      gain.gain.linearRampToValueAtTime(0.7, startTimeScheduled + Math.min(0.01, duration / 2));
       gain.gain.exponentialRampToValueAtTime(0.001, startTimeScheduled + duration);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
@@ -172,14 +260,8 @@
     }
 
     function scheduleHiHatPluck(duration, startTimeScheduled) {
-      let bufferSize = audioCtx.sampleRate * duration;
-      let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      let data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
       let noise = audioCtx.createBufferSource();
-      noise.buffer = buffer;
+      noise.buffer = noiseBuffer;
       let filter = audioCtx.createBiquadFilter();
       filter.type = 'highpass';
       filter.frequency.value = 7000;
@@ -189,7 +271,7 @@
       noise.connect(filter);
       filter.connect(gain);
       gain.connect(audioCtx.destination);
-      noise.start(startTimeScheduled);
+      noise.start(startTimeScheduled, Math.random() * (noiseBuffer.duration - duration));
       noise.stop(startTimeScheduled + duration);
     }
 
@@ -221,15 +303,26 @@
     }
 
     function playSnakeBurst() {
-      const numSegments = snake.length;
-      const totalBurstTime = fixedTick / 1000; // use fixed burst time for consistency
-      const segmentDuration = totalBurstTime / numSegments;
-      let now = audioCtx.currentTime;
-      for (let i = 0; i < numSegments; i++) {
-        let seg = snake[i];
-        let freq = getSquareFrequency(seg.x, seg.y);
-        scheduleSynthPluck(freq, segmentDuration, now + i * segmentDuration);
-        scheduleHiHatPluck(segmentDuration, now + i * segmentDuration);
+      const noteCount = Math.min(snake.length, 20);
+      const duration = fixedTick / 1000 / noteCount;
+      const stride = (snake.length - 1) / Math.max(1, noteCount - 1);
+      const now = audioCtx.currentTime;
+      for (let i = 0; i < noteCount; i++) {
+        const segment = snake[Math.round(i * stride)];
+        const freq = getSquareFrequency(segment.x, segment.y);
+        scheduleSynthPluck(freq, duration, now + i * duration);
+        scheduleHiHatPluck(duration, now + i * duration);
+      }
+    }
+
+    function playMoveSounds(head, ate) {
+      if (audioCtx?.state !== "running") return;
+      try {
+        playHeadSound(head.x, head.y);
+        playSnakeBurst();
+        if (ate) playKickDrum();
+      } catch {
+        audioCtx.suspend().catch(() => {});
       }
     }
 
@@ -247,10 +340,10 @@
     function randomVariation(val, range) {
       return val + (Math.random() * 2 - 1) * range;
     }
-    function getTrainBoardColor(row, col) {
-      let h = randomVariation(trainBoardBase.h, 5);
-      let s = randomVariation(trainBoardBase.s, 5);
-      let l = randomVariation(trainBoardBase.l, 5);
+    function getTrainBoardColor(base) {
+      let h = randomVariation(base.h, 5);
+      let s = randomVariation(base.s, 5);
+      let l = randomVariation(base.l, 5);
       return `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
     }
     function getRandomGreen() {
@@ -262,77 +355,90 @@
     // ------------------------------
     // Board & Drawing Functions
     // ------------------------------
+    function measureGrid() {
+      const width = boardArea.clientWidth;
+      const height = boardArea.clientHeight;
+      const targetTileSize = Math.max(38, width / 52, height / 36);
+      columns = Math.max(6, Math.round(width / targetTileSize));
+      rows = Math.max(6, Math.round(height / targetTileSize));
+    }
+
+    function resizeBoard() {
+      if (!mode) measureGrid();
+      const width = boardArea.clientWidth;
+      const height = boardArea.clientHeight;
+      const normalSize = Math.min(width / columns, height / rows);
+      const rotatedSize = Math.min(width / rows, height / columns);
+      // Rotate the view when it fits better. The snake and its target stay in game coordinates.
+      rotated = rotatedSize > normalSize * 1.08;
+      cellSize = Math.max(1, Math.floor(rotated ? rotatedSize : normalSize));
+
+      const cssWidth = (rotated ? rows : columns) * cellSize;
+      const cssHeight = (rotated ? columns : rows) * cellSize;
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.style.width = `${cssWidth}px`;
+      canvas.style.height = `${cssHeight}px`;
+      const pixelWidth = Math.round(cssWidth * pixelRatio);
+      const pixelHeight = Math.round(cssHeight * pixelRatio);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      ctx.setTransform(pixelWidth / cssWidth, 0, 0, pixelHeight / cssHeight, 0, 0);
+      draw();
+    }
+
+    function screenX(x, y) {
+      return (rotated ? rows - 1 - y : x) * cellSize;
+    }
+
+    function screenY(x, y) {
+      return (rotated ? x : y) * cellSize;
+    }
+
     function drawBoard() {
-      for (let row = 0; row < gridSize; row++) {
-        for (let col = 0; col < gridSize; col++) {
-          let x = col * cellSize;
-          let y = row * cellSize;
-          if (mode === "chess") {
-            let color1 = "#F0D9B5";
-            let color2 = "#F0CEA0";
-            ctx.fillStyle = ((row + col) % 2 === 0) ? color1 : color2;
-          } else if (mode === "train") {
-            ctx.fillStyle = trainBoardColors[row][col];
-          }
-          ctx.fillRect(x, y, cellSize, cellSize);
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < columns; col++) {
+          const chessColor = (row + col) % 2 === 0 ? "#eed8b5" : "#d4b78d";
+          ctx.fillStyle = mode === "train" ? trainBoardColors[row][col] : chessColor;
+          ctx.fillRect(screenX(col, row), screenY(col, row), cellSize, cellSize);
         }
       }
     }
 
     function drawSnake() {
-      if (mode === "chess") {
-        for (let i = 0; i < snake.length; i++) {
-          let seg = snake[i];
-          if (i === 0) {
-            // Draw head background first.
-            let headBg = "hsl(120, 100%, 30%)";
-            ctx.fillStyle = headBg;
-            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
-            ctx.font = (cellSize * 0.8) + "px serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🐲", seg.x * cellSize + cellSize / 2, seg.y * cellSize + cellSize / 2);
-          } else {
-            let lightness = (snake.length === 1) ? 30 : 30 + (40 * i) / (snake.length - 1);
-            ctx.fillStyle = `hsl(120, 100%, ${lightness}%)`;
-            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
-          }
-        }
-      } else if (mode === "train") {
-        for (let i = 0; i < snake.length; i++) {
-          let seg = snake[i];
-          if (i === 0) {
-            let headColor = seg.color || getRandomGreen();
-            ctx.fillStyle = headColor;
-            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
-            ctx.font = (cellSize * 0.8) + "px serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🐸", seg.x * cellSize + cellSize / 2, seg.y * cellSize + cellSize / 2);
-          } else {
-            if (!seg.color) seg.color = getRandomGreen();
-            ctx.fillStyle = seg.color;
-            ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
-          }
+      for (let i = 0; i < snake.length; i++) {
+        const segment = snake[i];
+        const x = screenX(segment.x, segment.y);
+        const y = screenY(segment.x, segment.y);
+        const lightness = 30 + 40 * i / Math.max(1, snake.length - 1);
+        ctx.fillStyle = mode === "train" ? segment.color : `hsl(120, 100%, ${lightness}%)`;
+        ctx.fillRect(x, y, cellSize, cellSize);
+        if (i === 0) {
+          ctx.fillStyle = "#142518";
+          ctx.fillText(mode === "train" ? "🐸" : "🐲", x + cellSize / 2, y + cellSize / 2);
         }
       }
     }
 
     function drawTreat() {
-      if (treat) {
-        ctx.font = (cellSize * 0.8) + "px serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        if (mode === "chess") {
-          ctx.fillText("♟️", treat.x * cellSize + cellSize / 2, treat.y * cellSize + cellSize / 2);
-        } else {
-          ctx.fillText("🍎", treat.x * cellSize + cellSize / 2, treat.y * cellSize + cellSize / 2);
-        }
-      }
+      if (!treat) return;
+      const x = screenX(treat.x, treat.y) + cellSize / 2;
+      const y = screenY(treat.x, treat.y) + cellSize / 2;
+      ctx.beginPath();
+      ctx.arc(x, y, cellSize * 0.43, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff8dc";
+      ctx.fill();
+      ctx.strokeStyle = "#364732";
+      ctx.lineWidth = Math.max(1, cellSize / 23);
+      ctx.stroke();
+      ctx.fillStyle = "#142518";
+      ctx.fillText(mode === "chess" ? "♟️" : "🍎", x, y);
     }
 
     function draw() {
       drawBoard();
+      ctx.font = `${cellSize * 0.73}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
       drawSnake();
       drawTreat();
     }
@@ -341,10 +447,12 @@
     // Stats Display (including treats eaten)
     // ------------------------------
     function updateStats() {
-      if (!startTime) return;
-      let elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-      document.getElementById("stats").innerText =
-        `⏱️ ${elapsed} s | 🦶🏼 ${tickCount} | 🍽️: ${treatsEaten}`;
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+      stats.textContent = `⏱️ ${elapsed} s · 🦶🏼 ${tickCount} · 🍽️ ${treatsEaten}`;
+    }
+
+    function setHint(message = defaultHint) {
+      if (hint.textContent !== message) hint.textContent = message;
     }
 
     // ------------------------------
@@ -433,264 +541,191 @@
     // ------------------------------
     // Game Logic and Tick Function
     // ------------------------------
-    // In chess mode the snake only moves (and tickCount advances) when a treat is present.
-    // In train mode the snake moves continuously.
     function gameTick() {
-      if (gameOver) return;
-      // Increase tickCount if a move occurs.
-      if (mode === "train") {
-        tickCount++;
-      } else if (mode === "chess") {
-        if (treat === null) {
-          updateStats();
-          draw();
+      if (!treat && mode === "chess") {
+        updateStats();
+        return;
+      }
+
+      let nextStep = treat ? findNextStep(treat) : null;
+      if (treat && !nextStep) {
+        // Let the body move out of the way for a few steps, then release a blocked target.
+        if (detourSteps >= Math.min(snake.length, 12)) {
+          treat = null;
+          setHint("Food was blocked. Pick another tile.");
+        } else {
+          detourSteps++;
+        }
+      }
+      if (!nextStep && (treat || mode === "train")) {
+        nextStep = chooseFallback();
+        if (!nextStep) {
+          endGame();
           return;
         }
-        tickCount++;
       }
-      // Every 10 steps (moves), increase tempo by 1%
-      if (tickCount - lastMilestone >= 10) {
-        currentTickInterval *= 0.99;
-        lastMilestone = tickCount;
-      }
-      updateStats();
-
-      let nextStep = null;
-      if (treat !== null) {
-        let path = findPath(snake[0], treat, snake);
-        if (path && path.length > 1) {
-          nextStep = path[1];
-        } else {
-          nextStep = chooseFallback(snake[0], snake);
-          if (nextStep === null) { endGame(); return; }
-        }
-      } else if (mode === "train") {
-        nextStep = chooseFallback(snake[0], snake);
-        if (nextStep === null) { endGame(); return; }
-      } else {
+      if (!nextStep) {
+        updateStats();
         draw();
         return;
       }
 
-      let willGrow = (treat && nextStep.x === treat.x && nextStep.y === treat.y);
-      let bodyToCheck = willGrow ? snake : snake.slice(0, snake.length - 1);
-      if (isCellInList(nextStep, bodyToCheck)) {
-        snake.unshift(nextStep);
-        draw();
-        endGame();
-        return;
-      }
-
-      if (mode === "train") {
-        snake.unshift({ x: nextStep.x, y: nextStep.y, color: getRandomGreen() });
-      } else {
-        snake.unshift({ x: nextStep.x, y: nextStep.y });
-      }
-
-      // Play sonification: head sound then burst.
-      playHeadSound(nextStep.x, nextStep.y);
-      playSnakeBurst();
-
-      if (!willGrow) {
-        snake.pop();
-      } else {
-        // Treat eaten: increment treatsEaten, clear treat, play kick drum,
-        // and (in train mode) reduce tick interval by an extra 2%.
+      const ate = treat !== null && sameCell(nextStep, treat);
+      snake.unshift(makeSegment(nextStep));
+      if (ate) {
         treatsEaten++;
         treat = null;
-        playKickDrum();
-        if (mode === "train") {
-          currentTickInterval *= 0.98;
-        }
+        setHint();
+      } else {
+        snake.pop();
       }
+
+      tickCount++;
+      lastVisit[cellIndex(nextStep)] = tickCount + 1;
+      if (tickCount % 10 === 0) currentTickInterval *= 0.99;
+      if (ate && mode === "train") currentTickInterval *= 0.98;
+      currentTickInterval = Math.max(minimumTick, currentTickInterval);
+      updateStats();
       draw();
+      playMoveSounds(nextStep, ate);
+      if (snake.length === columns * rows) endGame(true);
     }
 
-    // Recursive tick function.
     function tick() {
+      tickTimeout = null;
       if (gameOver) return;
       gameTick();
-      tickTimeout = setTimeout(tick, currentTickInterval);
+      if (!gameOver) tickTimeout = setTimeout(tick, currentTickInterval);
     }
 
     // ------------------------------
-    // Collision Helper and Pathfinding (A*)
+    // Collision and Pathfinding
     // ------------------------------
+    function sameCell(a, b) {
+      return a.x === b.x && a.y === b.y;
+    }
+
     function isCellInList(cell, list) {
-      return list.some(item => item.x === cell.x && item.y === cell.y);
+      return list.some(item => sameCell(item, cell));
     }
 
-    function findPath(start, goal, snakeList) {
-      let obstacles = snakeList.slice(0, snakeList.length - 1)
-        .filter(cell => !(cell.x === goal.x && cell.y === goal.y));
-      let openSet = [];
-      let closedSet = [];
-      let startNode = { x: start.x, y: start.y, g: 0, h: heuristic(start, goal), f: heuristic(start, goal), parent: null };
-      openSet.push(startNode);
-      while (openSet.length > 0) {
-        let currentIndex = 0;
-        for (let i = 1; i < openSet.length; i++) {
-          if (openSet[i].f < openSet[currentIndex].f) {
-            currentIndex = i;
-          }
-        }
-        let current = openSet.splice(currentIndex, 1)[0];
-        closedSet.push(current);
-        if (current.x === goal.x && current.y === goal.y) {
-          let path = [];
-          let temp = current;
-          while (temp) {
-            path.push({ x: temp.x, y: temp.y });
-            temp = temp.parent;
-          }
-          path.reverse();
-          return path;
-        }
-        let neighbors = [
-          { x: current.x, y: current.y - 1 },
-          { x: current.x, y: current.y + 1 },
-          { x: current.x - 1, y: current.y },
-          { x: current.x + 1, y: current.y }
-        ];
-        for (let neighbor of neighbors) {
-          if (neighbor.x < 0 || neighbor.x >= gridSize || neighbor.y < 0 || neighbor.y >= gridSize) continue;
-          if (isCellInList(neighbor, obstacles)) continue;
-          if (closedSet.find(n => n.x === neighbor.x && n.y === neighbor.y)) continue;
-          let tentativeG = current.g + 1;
-          let openNode = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
-          if (!openNode) {
-            openSet.push({ x: neighbor.x, y: neighbor.y, g: tentativeG, h: heuristic(neighbor, goal), f: tentativeG + heuristic(neighbor, goal), parent: current });
-          } else if (tentativeG < openNode.g) {
-            openNode.g = tentativeG;
-            openNode.f = tentativeG + openNode.h;
-            openNode.parent = current;
-          }
+    function isOnBoard({ x, y }) {
+      return x >= 0 && x < columns && y >= 0 && y < rows;
+    }
+
+    function cellIndex({ x, y }) {
+      return y * columns + x;
+    }
+
+    function neighborsOf({ x, y }) {
+      return [
+        { x, y: y - 1 }, { x, y: y + 1 }, { x: x - 1, y }, { x: x + 1, y }
+      ].filter(isOnBoard);
+    }
+
+    function findNextStep(goal) {
+      // On a non-growing move the tail vacates its tile.
+      const visited = new Set(snake.slice(0, -1).map(cellIndex));
+      visited.add(cellIndex(snake[0]));
+      const queue = [{ cell: snake[0], firstStep: null }];
+      for (let i = 0; i < queue.length; i++) {
+        const { cell, firstStep } = queue[i];
+        for (const neighbor of neighborsOf(cell)) {
+          const index = cellIndex(neighbor);
+          if (visited.has(index)) continue;
+          const step = firstStep ?? neighbor;
+          if (sameCell(neighbor, goal)) return step;
+          visited.add(index);
+          queue.push({ cell: neighbor, firstStep: step });
         }
       }
       return null;
     }
 
-    function heuristic(a, b) {
-      return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-    }
-
-    function chooseFallback(current, snakeList) {
-      const directions = [
-        { x: 0, y: -1 },
-        { x: 1, y: 0 },
-        { x: 0, y: 1 },
-        { x: -1, y: 0 }
-      ];
-      let obstacles = snakeList.slice(0, snakeList.length - 1);
-      if (mode === "train") directions.sort(() => Math.random() - 0.5);
-      for (let dir of directions) {
-        let next = { x: current.x + dir.x, y: current.y + dir.y };
-        if (next.x < 0 || next.x >= gridSize || next.y < 0 || next.y >= gridSize) continue;
-        if (!isCellInList(next, obstacles)) return next;
-      }
-      return null;
+    function chooseFallback() {
+      const body = snake.slice(0, -1);
+      const available = neighborsOf(snake[0]).filter(cell => !isCellInList(cell, body));
+      if (available.length === 0) return null;
+      // Favor tiles visited longest ago to break short, repetitive loops.
+      const oldestVisit = Math.min(...available.map(cell => lastVisit[cellIndex(cell)]));
+      const choices = available.filter(cell => lastVisit[cellIndex(cell)] === oldestVisit);
+      return mode === "train" ? choices[Math.floor(Math.random() * choices.length)] : choices[0];
     }
 
     // ------------------------------
     // Game End and Overlay (Score Display with Animation)
     // ------------------------------
-    function endGame() {
+    function endGame(boardCleared = false) {
       gameOver = true;
-      if (tickTimeout) clearTimeout(tickTimeout);
-      let elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-      let emoji;
-      if (mode === "chess") {
-        emoji = getChessModeEmoji(tickCount);
-      } else {
-        emoji = getTrainModeEmoji(tickCount);
-      }
-      let overlayMsg = document.getElementById("overlayMessage");
-      overlayMsg.innerText = `${emoji} ⏱️ ${elapsed} s | 🦶🏼 ${tickCount} | 🍽️: ${treatsEaten}`;
-      if (mode === "chess") {
-        overlayMsg.classList.add("chessFinishAnimation");
-      } else {
-        overlayMsg.classList.add("trainFinishAnimation");
-      }
-      document.getElementById("modeButtons").style.display = "block";
-      document.getElementById("overlay").style.display = "flex";
+      clearTimeout(tickTimeout);
+      tickTimeout = null;
+      updateStats();
+      const emoji = mode === "chess" ? getChessModeEmoji(tickCount) : getTrainModeEmoji(tickCount);
+      overlayTitle.textContent = boardCleared ? "Board cleared!" : "Play again?";
+      overlayMessage.textContent = `${emoji} · ${stats.textContent}`;
+      overlayMessage.classList.add(mode === "chess" ? "chessFinishAnimation" : "trainFinishAnimation");
+      overlay.hidden = false;
     }
 
     // ------------------------------
     // Initialization & Mode Setup
     // ------------------------------
-    function initTrainBoardColors() {
-      trainBoardColors = [];
-      for (let row = 0; row < gridSize; row++) {
-        trainBoardColors[row] = [];
-        for (let col = 0; col < gridSize; col++) {
-          trainBoardColors[row][col] = getTrainBoardColor(row, col);
-        }
-      }
+    function makeSegment({ x, y }) {
+      return mode === "train" ? { x, y, color: getRandomGreen() } : { x, y };
     }
 
-    function initGame() {
-      snake = [];
+    function initGame(selectedMode) {
+      clearTimeout(tickTimeout);
+      mode = selectedMode;
+      measureGrid();
+      const x = Math.floor(columns / 2);
+      const y = Math.floor(rows / 2);
+      snake = [makeSegment({ x, y }), makeSegment({ x: x - 1, y }), makeSegment({ x: x - 2, y })];
+      lastVisit = new Int32Array(columns * rows);
+      for (const segment of snake) lastVisit[cellIndex(segment)] = 1;
       treat = null;
+      detourSteps = 0;
       tickCount = 0;
       treatsEaten = 0;
       gameOver = false;
-      startTime = Date.now();
+      startTime = performance.now();
       currentTickInterval = fixedTick;
-      lastMilestone = 0;
       if (mode === "train") {
-        snake.push({ x: 10, y: 10, color: getRandomGreen() });
-        snake.push({ x: 9, y: 10, color: getRandomGreen() });
-        snake.push({ x: 8, y: 10, color: getRandomGreen() });
-        trainBoardBase = chooseTrainBoardBase();
-        initTrainBoardColors();
-      } else {
-        snake.push({ x: 10, y: 10 });
-        snake.push({ x: 9, y: 10 });
-        snake.push({ x: 8, y: 10 });
+        const base = chooseTrainBoardBase();
+        trainBoardColors = Array.from({ length: rows }, () =>
+          Array.from({ length: columns }, () => getTrainBoardColor(base)));
       }
-      document.getElementById("stats").innerText = "";
-      let overlayMsg = document.getElementById("overlayMessage");
-      overlayMsg.classList.remove("chessFinishAnimation", "trainFinishAnimation");
-      document.getElementById("overlay").style.display = "none";
-      tick();
-      draw();
+      overlayMessage.classList.remove("chessFinishAnimation", "trainFinishAnimation");
+      overlay.hidden = true;
+      setHint();
+      updateStats();
+      resizeBoard();
+      enableAudio();
+      tickTimeout = setTimeout(tick, currentTickInterval);
     }
 
     // ------------------------------
-    // Canvas Click for Treat Placement (with debouncing)
+    // Place or Move Food
     // ------------------------------
-    canvas.addEventListener("click", function(event) {
+    canvas.addEventListener("click", event => {
       if (gameOver) return;
-      if (treat !== null) return;
-      let now = Date.now();
-      if (now - lastTreatClickTime < 100) return;
-      lastTreatClickTime = now;
       const rect = canvas.getBoundingClientRect();
       const x = Math.floor((event.clientX - rect.left) / cellSize);
       const y = Math.floor((event.clientY - rect.top) / cellSize);
-      if (isCellInList({ x: x, y: y }, snake)) return;
-      treat = { x, y };
-      if (!startTime) startTime = Date.now();
+      const cell = rotated ? { x: y, y: rows - 1 - x } : { x, y };
+      if (!isOnBoard(cell) || isCellInList(cell, snake)) return;
+      treat = cell;
+      detourSteps = 0;
+      setHint();
+      draw();
+      enableAudio();
     });
 
-    // ------------------------------
-    // Overlay Mode Selection Buttons
-    // ------------------------------
-    document.getElementById("chessButton").addEventListener("click", function() {
-      mode = "chess";
-      initGame();
-    });
-    document.getElementById("trainButton").addEventListener("click", function() {
-      mode = "train";
-      initGame();
-    });
-
-    // ------------------------------
-    // Start: Show overlay for mode selection
-    // ------------------------------
-    document.getElementById("overlayMessage").innerText = "";
-    document.getElementById("modeButtons").style.display = "block";
-    document.getElementById("overlay").style.display = "flex";
+    document.getElementById("chessButton").addEventListener("click", () => initGame("chess"));
+    document.getElementById("trainButton").addEventListener("click", () => initGame("train"));
+    window.addEventListener("resize", resizeBoard);
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(resizeBoard).observe(boardArea);
+    resizeBoard();
   </script>
 </body>
 </html>
